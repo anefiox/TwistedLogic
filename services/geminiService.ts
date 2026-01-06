@@ -2,9 +2,28 @@
 import { GoogleGenAI, Modality, Type, Schema } from "@google/genai";
 import { StoryMessage, LLMSettings } from "../types";
 
+// Helper to safely get env variable without crashing in browser
+const getEnvApiKey = () => {
+  try {
+    // Check for standard process.env (Node/Webpack)
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+    // Check for Vite specific env
+    // Cast import.meta to any to avoid TS error: Property 'env' does not exist on type 'ImportMeta'
+    const meta = import.meta as any;
+    if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_KEY) {
+      return meta.env.VITE_API_KEY;
+    }
+  } catch (e) {
+    // Ignore errors in strict environments
+  }
+  return undefined;
+};
+
 // Helper to get a fresh AI instance.
-// Prioritizes the key passed as argument (from settings), fallback to env var.
-const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
+// Prioritizes the key passed as argument (from settings), fallback to safe env check.
+const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApiKey() });
 
 // Constants for Models
 const TEXT_MODEL = 'gemini-3-pro-preview';
