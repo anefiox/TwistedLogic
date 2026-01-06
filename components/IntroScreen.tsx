@@ -11,6 +11,7 @@ interface IntroScreenProps {
 const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettingsChange }) => {
   const [textStage, setTextStage] = useState(0);
   const [showConfig, setShowConfig] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const timers = [
@@ -27,6 +28,27 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
       ...settings,
       [field]: value
     });
+    // Clear error when user makes changes
+    if (errorMsg) setErrorMsg(null);
+  };
+
+  const validateAndSave = () => {
+    if (settings.provider === 'gemini' && !settings.apiKey.trim()) {
+      setErrorMsg("API Key required for Gemini access.");
+      return;
+    }
+    // External/Local allows empty key
+    setShowConfig(false);
+    setErrorMsg(null);
+  };
+
+  const handleStartAttempt = () => {
+    if (settings.provider === 'gemini' && !settings.apiKey.trim()) {
+      setErrorMsg("Please configure a Gemini API Key to proceed.");
+      setShowConfig(true);
+      return;
+    }
+    onStart();
   };
 
   if (showConfig) {
@@ -34,6 +56,12 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
       <div className="flex flex-col items-center justify-center h-full w-full bg-black/95 p-8 text-left font-mono z-50 overflow-y-auto">
         <div className="w-full max-w-lg border-2 border-white/20 p-6 bg-gray-900 rounded-lg shadow-2xl">
           <h2 className="text-xl text-white mb-6 uppercase tracking-widest border-b border-white/10 pb-3">Settings</h2>
+          
+          {errorMsg && (
+            <div className="mb-6 p-3 bg-red-900/40 border border-red-500/50 text-red-200 text-xs font-bold uppercase tracking-wide flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+               <span className="text-red-500 text-lg">!</span> {errorMsg}
+            </div>
+          )}
           
           <div className="space-y-6">
             <div className="flex flex-col space-y-2">
@@ -140,7 +168,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
           </div>
 
           <button 
-            onClick={() => setShowConfig(false)}
+            onClick={validateAndSave}
             className="mt-10 w-full bg-white text-black py-3 hover:bg-gray-200 transition-colors uppercase text-xs font-bold tracking-[0.3em] rounded"
           >
             Save
@@ -151,7 +179,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full bg-black text-center select-none cursor-pointer relative" onClick={onStart}>
+    <div className="flex flex-col items-center justify-center h-full w-full bg-black text-center select-none cursor-pointer relative" onClick={handleStartAttempt}>
       <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none overflow-hidden">
          <svg className="animate-[spin_12s_linear_infinite] w-[200%] h-[200%] sm:w-full sm:h-full" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
             <path d="M50,50 m0,-45 a45,45 0 1,1 0,90 a45,45 0 1,1 0,-90" fill="none" stroke="white" strokeWidth="0.2" strokeDasharray="10,20" />
@@ -175,7 +203,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
         </div>
 
         <button 
-          onClick={(e) => { e.stopPropagation(); onStart(); }}
+          onClick={(e) => { e.stopPropagation(); handleStartAttempt(); }}
           className={`mt-12 px-8 py-3 border border-white hover:bg-white hover:text-black transition-all duration-300 font-bold uppercase tracking-widest ${textStage >= 3 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
           Begin The Journey
@@ -184,7 +212,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
 
       <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-1000 ${textStage >= 3 ? 'opacity-100' : 'opacity-0'}`}>
         <button 
-          onClick={(e) => { e.stopPropagation(); setShowConfig(true); }}
+          onClick={(e) => { e.stopPropagation(); setShowConfig(true); setErrorMsg(null); }}
           className="text-gray-700 hover:text-white text-[10px] uppercase tracking-[0.5em] font-bold border-b border-transparent hover:border-white/20 transition-all pb-1"
         >
           Settings
