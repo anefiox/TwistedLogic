@@ -1,8 +1,10 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+
+import { GoogleGenAI, Modality, Type, Schema } from "@google/genai";
 import { StoryMessage, LLMSettings } from "../types";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get a fresh AI instance.
+// Prioritizes the key passed as argument (from settings), fallback to env var.
+const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
 
 // Constants for Models
 const TEXT_MODEL = 'gemini-3-pro-preview';
@@ -17,15 +19,34 @@ The genre is a mix of sci-fi, horror, and psychological thriller, evoking the fe
 Rules:
 1. Speak in a sophisticated, clipped, and intellectual style. You are an observer of human folly.
 2. Start the game with an atmospheric opening monologue setting the scene for a NEW, random, strange scenario involving the player.
-3. The story should be interactive. At the end of each narration, present the situation clearly and wait for the user's action.
+3. The story is a TEXT ADVENTURE. At the end of each narration, clearly present the immediate situation and explicitly ask or wait for the user to type their action.
 4. Keep your responses concise (max 150 words) to keep the pace moving, but descriptive enough to be atmospheric.
 5. If the user does something foolish, narrate the consequences, potentially leading to a "twist ending" or game over where logic completely unravels.
 6. Maintain a black-and-white, noir atmosphere in your descriptions.
-7. CRITICAL: When the story reaches a definitive conclusion (whether death, madness, or resolution), you MUST append the tag [THE_END] to the very end of your response. Do not use this tag unless the story is absolutely finished.
 `;
 
-// Helper for External OpenAI-Compatible Calls
-async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<string> {
+// Define the JSON schema for the model's response
+const GAME_RESPONSE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    narrative: {
+      type: Type.STRING,
+      description: "The story narration and dialogue from The Curator.",
+    },
+    isGameOver: {
+      type: Type.BOOLEAN,
+      description: "True if the story has reached a definitive conclusion (death, madness, or resolution).",
+    },
+  },
+  required: ["narrative", "isGameOver"],
+};
+
+export interface GameResponse {
+  text: string;
+  ended: boolean;
+}
+
+async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<GameResponse> {
   try {
     const response = await fetch(`${settings.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -48,16 +69,22 @@ async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "The signal was received, but the message is blank.";
+    const rawText = data.choices?.[0]?.message?.content || "The signal was received, but the message is blank.";
+    
+    // Basic heuristic for external models since they don't share the strict JSON schema
+    const ended = rawText.includes("[THE_END]") || rawText.toLowerCase().includes("the end");
+    return { text: rawText, ended };
+
   } catch (error) {
     console.error("External LLM Error:", error);
-    // Return the error message to the UI so the user sees what happened
-    return `Transmission failure. The external frequency is jammed. (${error instanceof Error ? error.message : String(error)})`;
+    return { 
+      text: `Transmission failure. The external frequency is jammed. (${error instanceof Error ? error.message : String(error)})`,
+      ended: false 
+    };
   }
 }
 
-export const startNewEpisode = async (settings: LLMSettings): Promise<string> => {
-  // External Provider Path
+export const startNewEpisode = async (settings: LLMSettings): Promise<GameResponse> => {
   if (settings.provider === 'external') {
     const messages = [
       { role: "system", content: SYSTEM_INSTRUCTION },
@@ -66,95 +93,86 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<string> =>
     return callExternalLLM(messages, settings);
   }
 
-  // Gemini Path
+  const ai = getAI(settings.apiKey);
   try {
     const response = await ai.models.generateContent({
       model: TEXT_MODEL,
       contents: "Begin the episode. Set the scene and introduce the protagonist (the player) into a world where logic is twisted.",
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        thinkingConfig: { thinkingBudget: 1024 } 
+        responseMimeType: "application/json",
+        responseSchema: GAME_RESPONSE_SCHEMA,
       }
     });
-    return response.text || "The screen flickers... the signal is weak.";
-  } catch (error) {
+
+    if (response.text) {
+      const parsed = JSON.parse(response.text);
+      return { text: parsed.narrative, ended: parsed.isGameOver };
+    }
+    return { text: "The screen flickers... the signal is weak.", ended: false };
+
+  } catch (error: any) {
     console.error("Error starting episode:", error);
-    return "The signal is lost... reality is buffering.";
+    let errorMsg = "The signal is lost... reality is buffering. Ensure your frequency key is valid.";
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("key not found")) {
+      errorMsg = "Transmission denied. Please verify your API Key in the 'Signal Adjustment' config menu.";
+    }
+    return { text: errorMsg, ended: true };
   }
 };
 
-export const continueStory = async (history: StoryMessage[], userAction: string, settings: LLMSettings): Promise<string> => {
-  // External Provider Path
+export const continueStory = async (history: StoryMessage[], userAction: string, settings: LLMSettings): Promise<GameResponse> => {
   if (settings.provider === 'external') {
-    const messages: any[] = [
-      { role: "system", content: SYSTEM_INSTRUCTION }
-    ];
-    
-    // Inject the initial prompt if the history starts with the model
-    // This ensures the conversation structure is System -> User -> Assistant -> User...
-    // which prevents errors with strict LLM API validators (like LM Studio or Mistral)
+    const messages: any[] = [{ role: "system", content: SYSTEM_INSTRUCTION }];
     if (history.length > 0 && history[0].role === 'model') {
-        messages.push({
-            role: "user",
-            content: "Begin the episode. Set the scene and introduce the protagonist (the player) into a world where logic is twisted."
-        });
+        messages.push({ role: "user", content: "Begin the episode. Set the scene and introduce the protagonist (the player) into a world where logic is twisted." });
     }
-
-    // Convert history to OpenAI format
-    history.forEach(msg => {
-      messages.push({
-        role: msg.role === 'model' ? 'assistant' : 'user',
-        content: msg.text || "..."
-      });
-    });
-
+    history.forEach(msg => messages.push({ role: msg.role === 'model' ? 'assistant' : 'user', content: msg.text || "..." }));
     messages.push({ role: "user", content: userAction });
-    
     return callExternalLLM(messages, settings);
   }
 
-  // Gemini Path
+  const ai = getAI(settings.apiKey);
   try {
-    const contents = history.map(msg => ({
-      role: msg.role,
-      parts: [{ text: msg.text }]
-    }));
-
-    contents.push({
-      role: 'user',
-      parts: [{ text: userAction }]
-    });
-
+    const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
+    contents.push({ role: 'user', parts: [{ text: userAction }] });
     const response = await ai.models.generateContent({
       model: TEXT_MODEL,
       contents: contents,
-      config: {
+      config: { 
         systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        responseSchema: GAME_RESPONSE_SCHEMA,
       }
     });
 
-    return response.text || "Static fills the air...";
-  } catch (error) {
+    if (response.text) {
+      const parsed = JSON.parse(response.text);
+      return { text: parsed.narrative, ended: parsed.isGameOver };
+    }
+    return { text: "Static fills the air...", ended: false };
+
+  } catch (error: any) {
     console.error("Error continuing story:", error);
-    return "A connection error in the void...";
+    let errorMsg = "A connection error in the void...";
+    if (error.message?.includes("API_KEY_INVALID")) {
+      errorMsg = "The signal was disconnected. Please check your API key in the 'Config' menu.";
+    }
+    return { text: errorMsg, ended: true };
   }
 };
 
-// Image and Audio always use Gemini regardless of text provider
-export const generateSceneImage = async (sceneDescription: string): Promise<string | undefined> => {
+export const generateSceneImage = async (sceneDescription: string, apiKey?: string): Promise<string | undefined> => {
+  const ai = getAI(apiKey);
   try {
     const prompt = `A high contrast, black and white, film noir style scene depicting: ${sceneDescription}. Grainy 1960s television quality. eerie atmosphere, surreal, mysterious. no text in the image`;
-    
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
-      contents: prompt,
-      config: {}
+      contents: { parts: [{ text: prompt }] },
+      config: { imageConfig: { aspectRatio: "4:3" } }
     });
-
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
     return undefined;
   } catch (error) {
@@ -163,56 +181,36 @@ export const generateSceneImage = async (sceneDescription: string): Promise<stri
   }
 };
 
-export const generateNarrationAudio = async (text: string): Promise<string | undefined> => {
+export const generateNarrationAudio = async (text: string, apiKey?: string): Promise<string | undefined> => {
+  const ai = getAI(apiKey);
   try {
     const response = await ai.models.generateContent({
       model: AUDIO_MODEL,
       contents: [{ parts: [{ text: text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Charon' }, 
-          },
-        },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
       },
     });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-        return base64Audio;
-    }
-    return undefined;
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) {
     console.error("Error generating audio:", error);
     return undefined;
   }
 };
 
-// Helper: Decode Base64 to Uint8Array
 function decodeBase64(base64: string): Uint8Array {
   const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 }
 
-// Helper: Decode raw PCM data (16-bit) to AudioBuffer
-async function decodePCM(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number = 24000
-): Promise<AudioBuffer> {
+async function decodePCM(data: Uint8Array, ctx: AudioContext, sampleRate: number = 24000): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const buffer = ctx.createBuffer(1, dataInt16.length, sampleRate);
   const channelData = buffer.getChannelData(0);
-  
-  for (let i = 0; i < dataInt16.length; i++) {
-    channelData[i] = dataInt16[i] / 32768.0;
-  }
+  for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
   return buffer;
 }
 
@@ -221,7 +219,6 @@ export const playAudioFromBase64 = async (base64Audio: string) => {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const pcmBytes = decodeBase64(base64Audio);
         const audioBuffer = await decodePCM(pcmBytes, audioContext, 24000);
-        
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(audioContext.destination);

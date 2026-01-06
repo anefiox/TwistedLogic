@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { startNewEpisode, continueStory, generateSceneImage, generateNarrationAudio, playAudioFromBase64 } from '../services/geminiService';
 import { StoryMessage, LLMSettings } from '../types';
@@ -14,6 +15,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [autoNarrate, setAutoNarrate] = useState(true);
   const [isEnded, setIsEnded] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   
@@ -58,41 +60,28 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     }
   };
 
-  const processResponseText = (rawText: string): { text: string; ended: boolean } => {
-    let text = rawText;
-    let ended = false;
-    
-    // Explicit tag detection
-    if (text.includes('[THE_END]')) {
-      ended = true;
-      text = text.replace(/\[THE_END\]/g, '').trim();
-    }
-    
-    return { text, ended };
-  };
-
   // Initial Load
   useEffect(() => {
     const initGame = async () => {
       stopAudio();
       setIsLoading(true);
-      const startRawText = await startNewEpisode(settings);
       
-      const { text, ended } = processResponseText(startRawText);
+      const { text, ended } = await startNewEpisode(settings);
+      
       const newMessage: StoryMessage = { role: 'model', text: text };
       
       setHistory([newMessage]);
       if (ended) setIsEnded(true);
 
-      // Generate Assets in Background if enabled and not ended immediately (unlikely but possible)
+      // Generate Assets in Background if enabled and not ended immediately
       if (settings.autoGenerateImage) {
-        generateSceneImage(text).then(img => {
+        generateSceneImage(text, settings.apiKey).then(img => {
           if (img) updateLastMessageAsset('image', img);
         });
       }
 
       if (settings.autoGenerateAudio) {
-        generateNarrationAudio(text).then(audio => {
+        generateNarrationAudio(text, settings.apiKey).then(audio => {
           if (audio) {
               updateLastMessageAsset('audio', audio);
               if (autoNarrate) playManagedAudio(audio);
@@ -138,9 +127,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     const userMsg: StoryMessage = { role: 'user', text: action };
     setHistory(prev => [...prev, userMsg]);
 
-    const responseTextRaw = await continueStory(history, action, settings);
-    
-    const { text, ended } = processResponseText(responseTextRaw);
+    const { text, ended } = await continueStory(history, action, settings);
     
     const aiMsg: StoryMessage = { role: 'model', text: text };
     setHistory(prev => [...prev, aiMsg]);
@@ -150,13 +137,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     } else {
       // Only generate assets if story continues
       if (settings.autoGenerateImage) {
-        generateSceneImage(text).then(img => {
+        generateSceneImage(text, settings.apiKey).then(img => {
             if (img) updateLastMessageAsset('image', img);
         });
       }
 
       if (settings.autoGenerateAudio) {
-        generateNarrationAudio(text).then(audio => {
+        generateNarrationAudio(text, settings.apiKey).then(audio => {
             if (audio) {
                 updateLastMessageAsset('audio', audio);
                 if (autoNarrate) playManagedAudio(audio);
@@ -174,7 +161,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
           await playManagedAudio(msg.audio);
       } else {
           setIsPlayingAudio(true);
-          const audioData = await generateNarrationAudio(msg.text);
+          const audioData = await generateNarrationAudio(msg.text, settings.apiKey);
           if (audioData) {
               updateLastMessageAsset('audio', audioData);
               await playManagedAudio(audioData);
@@ -252,12 +239,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
                 </div>
              </div>
              
-             <button 
-                onClick={onRestart}
-                className="px-10 py-3 bg-white text-black font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.3)] mt-4"
-             >
-                Start New Episode
-             </button>
+             <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full justify-center">
+                 <button 
+                    onClick={onRestart}
+                    className="px-10 py-3 bg-white text-black font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                 >
+                    Start New Episode
+                 </button>
+             </div>
           </div>
         )}
 
