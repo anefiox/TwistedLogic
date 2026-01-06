@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Modality, Type, Schema } from "@google/genai";
 import { StoryMessage, LLMSettings } from "../types";
+import { generateHordeImage } from './hordeService';
 
 // Helper to safely get env variable without crashing in browser
 const getEnvApiKey = () => {
@@ -200,11 +201,11 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
   }
 };
 
-// --- IMAGES (Hybrid: Google -> Pollinations.ai) ---
+// --- IMAGES (Hybrid: Google -> AI Horde) ---
 
 export const generateSceneImage = async (sceneDescription: string, apiKey?: string): Promise<string | undefined> => {
-  // 1. Try Google if API Key exists and we aren't explicitly on a "free only" mode
-  // (We assume if they have a key, they might want to use it, but we catch errors aggressively)
+  // 1. Try Google if API Key exists
+  // We keep this to support paid users who want fast generation.
   if (apiKey) {
     try {
         const ai = getAI(apiKey);
@@ -218,20 +219,13 @@ export const generateSceneImage = async (sceneDescription: string, apiKey?: stri
             if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
         }
     } catch (error) {
-        console.warn("Google Image Gen failed (Quota/Error), falling back to Pollinations:", error);
+        console.warn("Google Image Gen failed, falling back to AI Horde:", error);
     }
   }
 
-  // 2. Fallback to Pollinations.ai (Free, No Key)
-  try {
-    const prompt = encodeURIComponent(`noir style, black and white photography, ${sceneDescription}, grainy 1960s tv, horror, scary, high contrast, twilight zone`);
-    const seed = Math.floor(Math.random() * 10000);
-    // Return URL directly
-    return `https://image.pollinations.ai/prompt/${prompt}?width=512&height=384&seed=${seed}&nologo=true`;
-  } catch (e) {
-    console.error("Pollinations Image gen failed", e);
-    return undefined;
-  }
+  // 2. Fallback to AI Horde (Stable Horde)
+  // Completely free, uses community GPUs.
+  return await generateHordeImage(sceneDescription);
 };
 
 // --- AUDIO (Hybrid: Google -> Browser Native) ---

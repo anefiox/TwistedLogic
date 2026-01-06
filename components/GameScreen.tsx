@@ -12,6 +12,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
   const [history, setHistory] = useState<StoryMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [autoNarrate, setAutoNarrate] = useState(true);
   const [isEnded, setIsEnded] = useState(false);
@@ -76,23 +77,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
       }
   };
 
-  // Initial Load
-  useEffect(() => {
-    const initGame = async () => {
-      stopAudio();
-      setIsLoading(true);
-      
-      const { text, ended } = await startNewEpisode(settings);
-      
-      const newMessage: StoryMessage = { role: 'model', text: text };
-      
-      setHistory([newMessage]);
-      if (ended) setIsEnded(true);
+  const updateLastMessageAsset = (type: 'image' | 'audio', data: string) => {
+     setHistory(prev => {
+         const newHistory = [...prev];
+         const lastIndex = newHistory.length - 1;
+         if (newHistory[lastIndex] && newHistory[lastIndex].role === 'model') {
+             newHistory[lastIndex] = { ...newHistory[lastIndex], [type]: data };
+         }
+         return newHistory;
+     });
+  };
 
-      // Generate Assets in Background
+  const handleGenerateAssets = (text: string) => {
       if (settings.autoGenerateImage) {
+        setIsImageLoading(true);
         generateSceneImage(text, settings.apiKey).then(img => {
-          if (img) updateLastMessageAsset('image', img);
+            setIsImageLoading(false);
+            if (img) updateLastMessageAsset('image', img);
         });
       }
 
@@ -107,6 +108,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
           }
         });
       }
+  };
+
+  // Initial Load
+  useEffect(() => {
+    const initGame = async () => {
+      stopAudio();
+      setIsLoading(true);
+      
+      const { text, ended } = await startNewEpisode(settings);
+      
+      const newMessage: StoryMessage = { role: 'model', text: text };
+      
+      setHistory([newMessage]);
+      if (ended) setIsEnded(true);
+
+      handleGenerateAssets(text);
 
       setIsLoading(false);
     };
@@ -120,18 +137,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [history, isLoading, isEnded]);
-
-  const updateLastMessageAsset = (type: 'image' | 'audio', data: string) => {
-     setHistory(prev => {
-         const newHistory = [...prev];
-         const lastIndex = newHistory.length - 1;
-         if (newHistory[lastIndex] && newHistory[lastIndex].role === 'model') {
-             newHistory[lastIndex] = { ...newHistory[lastIndex], [type]: data };
-         }
-         return newHistory;
-     });
-  };
+  }, [history, isLoading, isImageLoading, isEnded]);
 
   const handleAction = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -154,23 +160,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     if (ended) {
       setIsEnded(true);
     } else {
-      // Only generate assets if story continues
-      if (settings.autoGenerateImage) {
-        generateSceneImage(text, settings.apiKey).then(img => {
-            if (img) updateLastMessageAsset('image', img);
-        });
-      }
-
-      if (settings.autoGenerateAudio) {
-        generateNarrationAudio(text, settings.apiKey).then(audio => {
-            if (audio) {
-                updateLastMessageAsset('audio', audio);
-                if (autoNarrate) handleAudioPlayback(text, audio);
-            } else if (autoNarrate) {
-                handleAudioPlayback(text);
-            }
-        });
-      }
+      handleGenerateAssets(text);
     }
 
     setIsLoading(false);
@@ -236,9 +226,15 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
              </div>
 
              {/* Image Attachment */}
-             {msg.image && (
+             {msg.image ? (
                  <div className="mt-4 w-full max-w-md border-4 border-white/10 shadow-lg rounded overflow-hidden opacity-0 animate-[fadeIn_1s_ease-out_forwards]">
                      <img src={msg.image} alt="Scene" className="w-full h-auto grayscale contrast-125 brightness-90 sepia-[.2]" />
+                 </div>
+             ) : (isImageLoading && idx === history.length - 1 && msg.role === 'model') && (
+                 <div className="mt-4 w-full max-w-md h-64 bg-gray-900 border-4 border-white/10 flex items-center justify-center animate-pulse">
+                     <div className="text-xs uppercase tracking-widest text-gray-600 font-mono">
+                         Scanning Visual Feed...
+                     </div>
                  </div>
              )}
           </div>
