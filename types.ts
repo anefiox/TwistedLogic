@@ -8,7 +8,7 @@ export enum GameState {
 export interface StoryMessage {
   role: 'user' | 'model';
   text: string;
-  image?: string; // Base64 image
+  image?: string; // Base64 image or URL
   audio?: string; // Base64 audio
 }
 

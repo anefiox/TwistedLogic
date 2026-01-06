@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { startNewEpisode, continueStory, generateSceneImage, generateNarrationAudio, playAudioFromBase64 } from '../services/geminiService';
+import { startNewEpisode, continueStory, generateSceneImage, generateNarrationAudio, playAudioFromBase64, playBrowserAudio } from '../services/geminiService';
 import { StoryMessage, LLMSettings } from '../types';
 
 interface GameScreenProps {
@@ -19,10 +19,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   
-  // Ref to track latest history length for safe updates
-  const historyLengthRef = useRef(0);
-  useEffect(() => { historyLengthRef.current = history.length; }, [history]);
-
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {
@@ -31,14 +27,19 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
   }, []);
 
   const stopAudio = () => {
+    // Stop Web Audio API (Google TTS)
     if (audioSourceRef.current) {
       try {
         audioSourceRef.current.stop();
         audioSourceRef.current.disconnect();
       } catch (e) {
-        // Ignore errors if already stopped/disconnected
+        // Ignore errors
       }
       audioSourceRef.current = null;
+    }
+    // Stop Browser TTS
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
     }
     setIsPlayingAudio(false);
   };
@@ -60,6 +61,21 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     }
   };
 
+  const handleAudioPlayback = (text: string, audioData?: string) => {
+      stopAudio();
+      setIsPlayingAudio(true);
+      
+      if (audioData) {
+          // Play High Quality Google Audio
+          playManagedAudio(audioData);
+      } else {
+          // Play Browser Fallback
+          playBrowserAudio(text);
+          // Auto-turn off indicator after a rough estimate (100ms per char) or max 10s
+          setTimeout(() => setIsPlayingAudio(false), Math.min(text.length * 100, 10000));
+      }
+  };
+
   // Initial Load
   useEffect(() => {
     const initGame = async () => {
@@ -73,7 +89,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
       setHistory([newMessage]);
       if (ended) setIsEnded(true);
 
-      // Generate Assets in Background if enabled and not ended immediately
+      // Generate Assets in Background
       if (settings.autoGenerateImage) {
         generateSceneImage(text, settings.apiKey).then(img => {
           if (img) updateLastMessageAsset('image', img);
@@ -84,7 +100,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
         generateNarrationAudio(text, settings.apiKey).then(audio => {
           if (audio) {
               updateLastMessageAsset('audio', audio);
-              if (autoNarrate) playManagedAudio(audio);
+              if (autoNarrate) handleAudioPlayback(text, audio);
+          } else if (autoNarrate) {
+              // Fallback to browser audio if no key/quota
+              handleAudioPlayback(text);
           }
         });
       }
@@ -94,7 +113,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
 
     initGame();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once
+  }, []);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -146,7 +165,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
         generateNarrationAudio(text, settings.apiKey).then(audio => {
             if (audio) {
                 updateLastMessageAsset('audio', audio);
-                if (autoNarrate) playManagedAudio(audio);
+                if (autoNarrate) handleAudioPlayback(text, audio);
+            } else if (autoNarrate) {
+                handleAudioPlayback(text);
             }
         });
       }
@@ -157,16 +178,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
 
   const handlePlayClick = async (msg: StoryMessage) => {
       stopAudio();
+      
       if (msg.audio) {
-          await playManagedAudio(msg.audio);
+          handleAudioPlayback(msg.text, msg.audio);
       } else {
+          // Try to generate on demand
           setIsPlayingAudio(true);
           const audioData = await generateNarrationAudio(msg.text, settings.apiKey);
+          
           if (audioData) {
               updateLastMessageAsset('audio', audioData);
-              await playManagedAudio(audioData);
+              handleAudioPlayback(msg.text, audioData);
           } else {
-             setIsPlayingAudio(false);
+             // Fallback
+             handleAudioPlayback(msg.text);
           }
       }
   };
@@ -196,8 +221,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
                         <div className="flex items-center gap-2">
                              <button 
                                 onClick={() => handlePlayClick(msg)}
-                                className={`hover:text-white transition-colors disabled:opacity-30 ${msg.audio || !isLoading ? 'text-white' : 'text-gray-500'} ${isPlayingAudio ? 'animate-pulse' : ''}`}
-                                title={msg.audio ? "Replay Narration" : "Generate Narration"}
+                                className={`hover:text-white transition-colors disabled:opacity-30 ${msg.audio || isPlayingAudio ? 'text-white' : 'text-gray-500'} ${isPlayingAudio ? 'animate-pulse' : ''}`}
+                                title="Narrate"
                                 disabled={isLoading}
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" fill={msg.audio ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">

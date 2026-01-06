@@ -5,35 +5,30 @@ import { StoryMessage, LLMSettings } from "../types";
 // Helper to safely get env variable without crashing in browser
 const getEnvApiKey = () => {
   try {
-    // Check for standard process.env (Node/Webpack)
     if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
       return process.env.API_KEY;
     }
-    // Check for Vite specific env
-    // Cast import.meta to any to avoid TS error: Property 'env' does not exist on type 'ImportMeta'
     const meta = import.meta as any;
     if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_KEY) {
       return meta.env.VITE_API_KEY;
     }
   } catch (e) {
-    // Ignore errors in strict environments
+    // Ignore errors
   }
   return undefined;
 };
 
 // Helper to get a fresh AI instance.
-// Prioritizes the key passed as argument (from settings), fallback to safe env check.
 const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApiKey() });
 
-// Constants for Models
+// Constants
 const IMAGE_MODEL = 'gemini-2.5-flash-image';
 const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
 
 // Validate and sanitize Gemini model name
 const getGeminiModelName = (modelName: string): string => {
   if (!modelName) return 'gemini-2.5-flash';
-  // If the model name looks like an external one (e.g. contains slashes like 'mistralai/...')
-  // or doesn't start with typical Google prefixes, fallback to default.
+  
   if (modelName.includes('/') || (!modelName.startsWith('gemini') && !modelName.startsWith('veo'))) {
     console.warn(`Invalid Gemini model name detected: "${modelName}". Falling back to gemini-2.5-flash.`);
     return 'gemini-2.5-flash';
@@ -55,7 +50,6 @@ Rules:
 6. Maintain a black-and-white, noir atmosphere in your descriptions.
 `;
 
-// Define the JSON schema for the model's response
 const GAME_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -65,7 +59,7 @@ const GAME_RESPONSE_SCHEMA: Schema = {
     },
     isGameOver: {
       type: Type.BOOLEAN,
-      description: "True if the story has reached a definitive conclusion (death, madness, or resolution).",
+      description: "True if the story has reached a definitive conclusion.",
     },
   },
   required: ["narrative", "isGameOver"],
@@ -75,6 +69,8 @@ export interface GameResponse {
   text: string;
   ended: boolean;
 }
+
+// --- TEXT GENERATION ---
 
 async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<GameResponse> {
   try {
@@ -101,7 +97,6 @@ async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<
     const data = await response.json();
     const rawText = data.choices?.[0]?.message?.content || "The signal was received, but the message is blank.";
     
-    // Basic heuristic for external models since they don't share the strict JSON schema
     const ended = rawText.includes("[THE_END]") || rawText.toLowerCase().includes("the end");
     return { text: rawText, ended };
 
@@ -123,7 +118,7 @@ const handleGeminiError = (error: any): GameResponse => {
     if (eMsg.includes("API_KEY_INVALID") || eMsg.includes("key not found")) {
         errorMsg = "Transmission denied. Please verify your API Key in the 'Settings' menu.";
     } else if (eMsg.includes("429") || eMsg.includes("quota") || eMsg.includes("RESOURCE_EXHAUSTED")) {
-        errorMsg = "Quota exceeded. Please select a different model (e.g., Gemini 2.5 Flash) in Settings, or wait a moment.";
+        errorMsg = "Quota exceeded. Please select a different model in Settings, or wait a moment.";
     } else if (eMsg.includes("Candidate was blocked")) {
         errorMsg = "The narrative veered into forbidden territory. The censors have cut the feed. Try a different action.";
     } else if (eMsg.includes("404") || eMsg.includes("Not Found")) {
@@ -205,44 +200,87 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
   }
 };
 
+// --- IMAGES (Hybrid: Google -> Pollinations.ai) ---
+
 export const generateSceneImage = async (sceneDescription: string, apiKey?: string): Promise<string | undefined> => {
-  const ai = getAI(apiKey);
-  try {
-    const prompt = `A high contrast, black and white, film noir style scene depicting: ${sceneDescription}. Grainy 1960s television quality. eerie atmosphere, surreal, mysterious. no text in the image`;
-    const response = await ai.models.generateContent({
-      model: IMAGE_MODEL,
-      contents: { parts: [{ text: prompt }] },
-      config: { imageConfig: { aspectRatio: "4:3" } }
-    });
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+  // 1. Try Google if API Key exists and we aren't explicitly on a "free only" mode
+  // (We assume if they have a key, they might want to use it, but we catch errors aggressively)
+  if (apiKey) {
+    try {
+        const ai = getAI(apiKey);
+        const prompt = `A high contrast, black and white, film noir style scene depicting: ${sceneDescription}. Grainy 1960s television quality. eerie atmosphere, surreal, mysterious. no text in the image`;
+        const response = await ai.models.generateContent({
+            model: IMAGE_MODEL,
+            contents: { parts: [{ text: prompt }] },
+            config: { imageConfig: { aspectRatio: "4:3" } }
+        });
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+        }
+    } catch (error) {
+        console.warn("Google Image Gen failed (Quota/Error), falling back to Pollinations:", error);
     }
-    return undefined;
-  } catch (error) {
-    // Fail silently for assets to not interrupt gameplay
-    console.error("Error generating image (likely quota):", error);
+  }
+
+  // 2. Fallback to Pollinations.ai (Free, No Key)
+  try {
+    const prompt = encodeURIComponent(`noir style, black and white photography, ${sceneDescription}, grainy 1960s tv, horror, scary, high contrast, twilight zone`);
+    const seed = Math.floor(Math.random() * 10000);
+    // Return URL directly
+    return `https://image.pollinations.ai/prompt/${prompt}?width=512&height=384&seed=${seed}&nologo=true`;
+  } catch (e) {
+    console.error("Pollinations Image gen failed", e);
     return undefined;
   }
 };
 
+// --- AUDIO (Hybrid: Google -> Browser Native) ---
+
 export const generateNarrationAudio = async (text: string, apiKey?: string): Promise<string | undefined> => {
-  const ai = getAI(apiKey);
-  try {
-    const response = await ai.models.generateContent({
-      model: AUDIO_MODEL,
-      contents: [{ parts: [{ text: text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
-      },
-    });
-    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  } catch (error) {
-    // Fail silently for assets
-    console.error("Error generating audio (likely quota):", error);
-    return undefined;
+  // 1. Try Google TTS if API Key exists
+  if (apiKey) {
+    try {
+        const ai = getAI(apiKey);
+        const response = await ai.models.generateContent({
+        model: AUDIO_MODEL,
+        contents: [{ parts: [{ text: text }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
+        },
+        });
+        return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    } catch (error) {
+        console.warn("Google Audio Gen failed (Quota/Error), falling back to Browser TTS:", error);
+    }
   }
+  
+  // 2. Fallback: Return undefined to signal the UI to use Browser TTS
+  return undefined;
 };
+
+// --- BROWSER AUDIO HELPER ---
+
+export const playBrowserAudio = (text: string) => {
+  if (!window.speechSynthesis) return;
+  
+  window.speechSynthesis.cancel(); // Stop previous
+  const utterance = new SpeechSynthesisUtterance(text);
+  
+  // Try to find a creepy/deep voice
+  const voices = window.speechSynthesis.getVoices();
+  // Prefer Google US English or any Male voice, or just the default
+  const deepVoice = voices.find(v => v.name.includes("Google US English") || v.name.includes("Male") || v.lang === "en-US");
+  if (deepVoice) utterance.voice = deepVoice;
+  
+  utterance.pitch = 0.6; // Lower pitch = scarier
+  utterance.rate = 0.85;  // Slower = more dramatic
+  utterance.volume = 1.0;
+  
+  window.speechSynthesis.speak(utterance);
+};
+
+// --- GOOGLE AUDIO PLAYBACK HELPERS ---
 
 function decodeBase64(base64: string): Uint8Array {
   const binaryString = atob(base64);

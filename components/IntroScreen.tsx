@@ -157,13 +157,10 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                         onChange={(e) => handleChange('modelName', e.target.value)}
                         className="bg-black border border-white/10 text-white p-2 text-sm focus:border-white/40 focus:outline-none rounded transition-colors"
                       >
-                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended Free Tier)</option>
+                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
                           <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Fast)</option>
                           <option value="gemini-3-pro-preview">Gemini 3 Pro Preview (High Quality)</option>
                       </select>
-                      <p className="text-[9px] text-gray-500 italic">
-                        If you receive "Quota Exceeded" or "429" errors, please switch to 'Gemini 2.5 Flash'.
-                      </p>
                   </div>
 
                   <div className="bg-white/5 p-4 border border-white/10 rounded space-y-2">
@@ -173,12 +170,9 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                     <ol className="list-decimal list-inside text-[10px] text-gray-400 space-y-1 leading-relaxed">
                       <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Google AI Studio</a>.</li>
                       <li>Click <span className="text-white">"Create API Key"</span>.</li>
-                      <li>Select the "Free" tier.</li>
+                      <li>Select the "Free" tier (Gemini 2.5 Flash).</li>
                       <li>Paste the key above.</li>
                     </ol>
-                    <p className="text-[9px] text-gray-500 italic mt-2 border-t border-white/5 pt-2">
-                      Your key is stored only in your browser. It is never sent to the developer.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -201,9 +195,6 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                   AUDIO: {settings.autoGenerateAudio ? 'ON' : 'OFF'}
                 </button>
               </div>
-              <p className="text-[9px] text-gray-600 italic">
-                Note: Disable Visuals/Audio if you experience quota limits on the free tier.
-              </p>
             </div>
           </div>
 
