@@ -24,7 +24,7 @@ const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApi
 
 // Constants
 const IMAGE_MODEL = 'gemini-2.5-flash-image';
-const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
+const AUDIO_MODEL = 'gemini-2.5-pro-preview-tts';
 
 // Validate and sanitize Gemini model name
 const getGeminiModelName = (modelName: string): string => {
@@ -263,12 +263,29 @@ export const playBrowserAudio = (text: string) => {
   
   // Try to find a creepy/deep voice
   const voices = window.speechSynthesis.getVoices();
-  // Prefer Google US English or any Male voice, or just the default
-  const deepVoice = voices.find(v => v.name.includes("Google US English") || v.name.includes("Male") || v.lang === "en-US");
-  if (deepVoice) utterance.voice = deepVoice;
   
-  utterance.pitch = 0.6; // Lower pitch = scarier
-  utterance.rate = 0.85;  // Slower = more dramatic
+  // 1. Look for explicit "Male" in English (e.g., Google UK English Male)
+  let selectedVoice = voices.find(v => v.name.includes("Male") && v.lang.startsWith("en"));
+
+  // 2. Look for known male names if no generic "Male" found
+  if (!selectedVoice) {
+    selectedVoice = voices.find(v => (v.name.includes("David") || v.name.includes("Daniel") || v.name.includes("Mark")) && v.lang.startsWith("en"));
+  }
+
+  // 3. Fallback to Google US English (often neutral/female but high quality, pitch shift handles it)
+  if (!selectedVoice) {
+    selectedVoice = voices.find(v => v.name.includes("Google US English"));
+  }
+
+  // 4. Fallback to any English
+  if (!selectedVoice) {
+      selectedVoice = voices.find(v => v.lang.startsWith("en"));
+  }
+
+  if (selectedVoice) utterance.voice = selectedVoice;
+  
+  utterance.pitch = 0.5; // Very deep to sound like "The Curator"
+  utterance.rate = 0.9;  // Slightly slow
   utterance.volume = 1.0;
   
   window.speechSynthesis.speak(utterance);
