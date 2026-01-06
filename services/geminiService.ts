@@ -26,9 +26,20 @@ const getEnvApiKey = () => {
 const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApiKey() });
 
 // Constants for Models
-// TEXT_MODEL is now dynamic based on settings
 const IMAGE_MODEL = 'gemini-2.5-flash-image';
 const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
+
+// Validate and sanitize Gemini model name
+const getGeminiModelName = (modelName: string): string => {
+  if (!modelName) return 'gemini-2.5-flash';
+  // If the model name looks like an external one (e.g. contains slashes like 'mistralai/...')
+  // or doesn't start with typical Google prefixes, fallback to default.
+  if (modelName.includes('/') || (!modelName.startsWith('gemini') && !modelName.startsWith('veo'))) {
+    console.warn(`Invalid Gemini model name detected: "${modelName}". Falling back to gemini-2.5-flash.`);
+    return 'gemini-2.5-flash';
+  }
+  return modelName;
+};
 
 const SYSTEM_INSTRUCTION = `
 You are "The Curator", the mysterious and cynical host of "Twisted Logic".
@@ -115,6 +126,8 @@ const handleGeminiError = (error: any): GameResponse => {
         errorMsg = "Quota exceeded. Please select a different model (e.g., Gemini 2.5 Flash) in Settings, or wait a moment.";
     } else if (eMsg.includes("Candidate was blocked")) {
         errorMsg = "The narrative veered into forbidden territory. The censors have cut the feed. Try a different action.";
+    } else if (eMsg.includes("404") || eMsg.includes("Not Found")) {
+        errorMsg = "Model frequency not found. Check your model selection in Settings.";
     }
 
     return { text: errorMsg, ended: true };
@@ -131,8 +144,7 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<GameRespon
 
   const ai = getAI(settings.apiKey);
   try {
-    // Use the model selected in settings, fallback to a safe default if somehow empty
-    const modelToUse = settings.modelName || 'gemini-2.5-flash';
+    const modelToUse = getGeminiModelName(settings.modelName);
     
     const response = await ai.models.generateContent({
       model: modelToUse,
@@ -168,7 +180,7 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
 
   const ai = getAI(settings.apiKey);
   try {
-    const modelToUse = settings.modelName || 'gemini-2.5-flash';
+    const modelToUse = getGeminiModelName(settings.modelName);
 
     const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
     contents.push({ role: 'user', parts: [{ text: userAction }] });

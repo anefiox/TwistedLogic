@@ -32,6 +32,27 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
     if (errorMsg) setErrorMsg(null);
   };
 
+  const handleProviderSwitch = (newProvider: 'gemini' | 'external') => {
+    const updates: Partial<LLMSettings> = { provider: newProvider };
+    
+    // Reset model name to appropriate defaults when switching
+    if (newProvider === 'gemini') {
+        updates.modelName = 'gemini-2.5-flash';
+    } else if (newProvider === 'external') {
+        // If switching to external and current model is a specific gemini one, clear it or set a generic default
+        if (settings.modelName.startsWith('gemini')) {
+            updates.modelName = ''; 
+        }
+    }
+    
+    onSettingsChange({
+        ...settings,
+        ...updates
+    });
+    
+    if (errorMsg) setErrorMsg(null);
+  };
+
   const validateAndSave = () => {
     if (settings.provider === 'gemini' && !settings.apiKey.trim()) {
       setErrorMsg("API Key required for Gemini access.");
@@ -68,13 +89,13 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
               <label className="text-xs uppercase text-gray-500 tracking-tighter">Reality Provider</label>
               <div className="flex space-x-2 bg-black/40 p-1 rounded border border-white/5">
                 <button 
-                  onClick={() => handleChange('provider', 'gemini')}
+                  onClick={() => handleProviderSwitch('gemini')}
                   className={`flex-1 py-2 text-[10px] tracking-widest transition-all ${settings.provider === 'gemini' ? 'bg-white text-black font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                 >
                   GOOGLE GEMINI
                 </button>
                 <button 
-                   onClick={() => handleChange('provider', 'external')}
+                   onClick={() => handleProviderSwitch('external')}
                    className={`flex-1 py-2 text-[10px] tracking-widest transition-all ${settings.provider === 'external' ? 'bg-white text-black font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                 >
                   EXTERNAL LLM
@@ -100,6 +121,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                     value={settings.modelName}
                     onChange={(e) => handleChange('modelName', e.target.value)}
                     className="bg-black border border-white/10 text-white p-2 text-sm focus:border-white/40 focus:outline-none rounded transition-colors"
+                    placeholder="e.g. mistralai/ministral-3-3b"
                   />
                 </div>
                 <div className="flex flex-col space-y-1">
