@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Modality, Type, Schema } from "@google/genai";
 import { StoryMessage, LLMSettings } from "../types";
-import { generateHordeImage } from './hordeService';
+import { generateFreeImage } from './imageService';
 
 // Helper to safely get env variable without crashing in browser
 const getEnvApiKey = () => {
@@ -201,7 +201,7 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
   }
 };
 
-// --- IMAGES (Hybrid: Google -> AI Horde) ---
+// --- IMAGES (Hybrid: Google -> DeepAI/Pollinations) ---
 
 export const generateSceneImage = async (sceneDescription: string, apiKey?: string): Promise<string | undefined> => {
   // 1. Try Google if API Key exists
@@ -219,13 +219,12 @@ export const generateSceneImage = async (sceneDescription: string, apiKey?: stri
             if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
         }
     } catch (error) {
-        console.warn("Google Image Gen failed, falling back to AI Horde:", error);
+        console.warn("Google Image Gen failed, falling back to Free Generators:", error);
     }
   }
 
-  // 2. Fallback to AI Horde (Stable Horde)
-  // Completely free, uses community GPUs.
-  return await generateHordeImage(sceneDescription);
+  // 2. Fallback to DeepAI / Pollinations
+  return await generateFreeImage(sceneDescription);
 };
 
 // --- AUDIO (Hybrid: Google -> Browser Native) ---
