@@ -26,7 +26,7 @@ const getEnvApiKey = () => {
 const getAI = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey || getEnvApiKey() });
 
 // Constants for Models
-const TEXT_MODEL = 'gemini-3-pro-preview';
+// TEXT_MODEL is now dynamic based on settings
 const IMAGE_MODEL = 'gemini-2.5-flash-image';
 const AUDIO_MODEL = 'gemini-2.5-flash-preview-tts';
 
@@ -103,6 +103,23 @@ async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<
   }
 }
 
+const handleGeminiError = (error: any): GameResponse => {
+    console.error("Gemini API Error:", error);
+    let errorMsg = "The signal is lost... reality is buffering.";
+
+    const eMsg = error.message || JSON.stringify(error);
+
+    if (eMsg.includes("API_KEY_INVALID") || eMsg.includes("key not found")) {
+        errorMsg = "Transmission denied. Please verify your API Key in the 'Settings' menu.";
+    } else if (eMsg.includes("429") || eMsg.includes("quota") || eMsg.includes("RESOURCE_EXHAUSTED")) {
+        errorMsg = "Quota exceeded. Please select a different model (e.g., Gemini 2.5 Flash) in Settings, or wait a moment.";
+    } else if (eMsg.includes("Candidate was blocked")) {
+        errorMsg = "The narrative veered into forbidden territory. The censors have cut the feed. Try a different action.";
+    }
+
+    return { text: errorMsg, ended: true };
+};
+
 export const startNewEpisode = async (settings: LLMSettings): Promise<GameResponse> => {
   if (settings.provider === 'external') {
     const messages = [
@@ -114,8 +131,11 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<GameRespon
 
   const ai = getAI(settings.apiKey);
   try {
+    // Use the model selected in settings, fallback to a safe default if somehow empty
+    const modelToUse = settings.modelName || 'gemini-2.5-flash';
+    
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: modelToUse,
       contents: "Begin the episode. Set the scene and introduce the protagonist (the player) into a world where logic is twisted.",
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -131,12 +151,7 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<GameRespon
     return { text: "The screen flickers... the signal is weak.", ended: false };
 
   } catch (error: any) {
-    console.error("Error starting episode:", error);
-    let errorMsg = "The signal is lost... reality is buffering. Ensure your frequency key is valid.";
-    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("key not found")) {
-      errorMsg = "Transmission denied. Please verify your API Key in the 'Signal Adjustment' config menu.";
-    }
-    return { text: errorMsg, ended: true };
+    return handleGeminiError(error);
   }
 };
 
@@ -153,10 +168,12 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
 
   const ai = getAI(settings.apiKey);
   try {
+    const modelToUse = settings.modelName || 'gemini-2.5-flash';
+
     const contents = history.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
     contents.push({ role: 'user', parts: [{ text: userAction }] });
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: modelToUse,
       contents: contents,
       config: { 
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -172,12 +189,7 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
     return { text: "Static fills the air...", ended: false };
 
   } catch (error: any) {
-    console.error("Error continuing story:", error);
-    let errorMsg = "A connection error in the void...";
-    if (error.message?.includes("API_KEY_INVALID")) {
-      errorMsg = "The signal was disconnected. Please check your API key in the 'Config' menu.";
-    }
-    return { text: errorMsg, ended: true };
+    return handleGeminiError(error);
   }
 };
 
@@ -195,7 +207,8 @@ export const generateSceneImage = async (sceneDescription: string, apiKey?: stri
     }
     return undefined;
   } catch (error) {
-    console.error("Error generating image:", error);
+    // Fail silently for assets to not interrupt gameplay
+    console.error("Error generating image (likely quota):", error);
     return undefined;
   }
 };
@@ -213,7 +226,8 @@ export const generateNarrationAudio = async (text: string, apiKey?: string): Pro
     });
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) {
-    console.error("Error generating audio:", error);
+    // Fail silently for assets
+    console.error("Error generating audio (likely quota):", error);
     return undefined;
   }
 };

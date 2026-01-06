@@ -71,7 +71,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                   onClick={() => handleChange('provider', 'gemini')}
                   className={`flex-1 py-2 text-[10px] tracking-widest transition-all ${settings.provider === 'gemini' ? 'bg-white text-black font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  GEMINI 3 PRO
+                  GOOGLE GEMINI
                 </button>
                 <button 
                    onClick={() => handleChange('provider', 'external')}
@@ -127,8 +127,23 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                       placeholder="Paste your API Key here..."
                     />
                   </div>
+                  
+                  <div className="flex flex-col space-y-1">
+                      <label className="text-[10px] uppercase text-gray-500">Gemini Model</label>
+                      <select 
+                        value={settings.modelName} 
+                        onChange={(e) => handleChange('modelName', e.target.value)}
+                        className="bg-black border border-white/10 text-white p-2 text-sm focus:border-white/40 focus:outline-none rounded transition-colors"
+                      >
+                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended Free Tier)</option>
+                          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Fast)</option>
+                          <option value="gemini-3-pro-preview">Gemini 3 Pro Preview (High Quality)</option>
+                      </select>
+                      <p className="text-[9px] text-gray-500 italic">
+                        If you receive "Quota Exceeded" or "429" errors, please switch to 'Gemini 2.5 Flash'.
+                      </p>
+                  </div>
 
-                  {/* NEW INSTRUCTION BLURB */}
                   <div className="bg-white/5 p-4 border border-white/10 rounded space-y-2">
                     <p className="text-[10px] text-gray-300 font-bold uppercase tracking-wider">
                       How to play for free:
@@ -136,7 +151,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                     <ol className="list-decimal list-inside text-[10px] text-gray-400 space-y-1 leading-relaxed">
                       <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Google AI Studio</a>.</li>
                       <li>Click <span className="text-white">"Create API Key"</span>.</li>
-                      <li>Select the "Free" tier (Gemini 1.5 Flash is free).</li>
+                      <li>Select the "Free" tier.</li>
                       <li>Paste the key above.</li>
                     </ol>
                     <p className="text-[9px] text-gray-500 italic mt-2 border-t border-white/5 pt-2">
@@ -164,6 +179,9 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                   AUDIO: {settings.autoGenerateAudio ? 'ON' : 'OFF'}
                 </button>
               </div>
+              <p className="text-[9px] text-gray-600 italic">
+                Note: Disable Visuals/Audio if you experience quota limits on the free tier.
+              </p>
             </div>
           </div>
 

@@ -1,3 +1,4 @@
+
 export enum GameState {
   INTRO = 'INTRO',
   PLAYING = 'PLAYING',
@@ -29,7 +30,7 @@ export interface LLMSettings {
 export const DEFAULT_SETTINGS: LLMSettings = {
   provider: 'gemini',
   baseUrl: 'http://localhost:1234/v1',
-  modelName: 'mistralai/ministral-3-3b',
+  modelName: 'gemini-2.5-flash',
   apiKey: '',
   autoGenerateImage: true,
   autoGenerateAudio: true
