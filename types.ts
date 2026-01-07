@@ -27,6 +27,11 @@ export interface LLMSettings {
   autoGenerateAudio: boolean;
 }
 
+export interface GameResponse {
+  text: string;
+  ended: boolean;
+}
+
 export const DEFAULT_SETTINGS: LLMSettings = {
   provider: 'gemini',
   baseUrl: 'http://localhost:1234/v1',

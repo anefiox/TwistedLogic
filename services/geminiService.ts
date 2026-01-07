@@ -1,7 +1,8 @@
 
 import { GoogleGenAI, Modality, Type, Schema } from "@google/genai";
-import { StoryMessage, LLMSettings } from "../types";
+import { StoryMessage, LLMSettings, GameResponse } from "../types";
 import { generateFreeImage } from './imageService';
+import { generateFreeText } from './textService';
 
 // Helper to safely get env variable without crashing in browser
 const getEnvApiKey = () => {
@@ -66,11 +67,6 @@ const GAME_RESPONSE_SCHEMA: Schema = {
   required: ["narrative", "isGameOver"],
 };
 
-export interface GameResponse {
-  text: string;
-  ended: boolean;
-}
-
 // --- TEXT GENERATION ---
 
 async function callExternalLLM(messages: any[], settings: LLMSettings): Promise<GameResponse> {
@@ -130,6 +126,7 @@ const handleGeminiError = (error: any): GameResponse => {
 };
 
 export const startNewEpisode = async (settings: LLMSettings): Promise<GameResponse> => {
+  // 1. External Provider
   if (settings.provider === 'external') {
     const messages = [
       { role: "system", content: SYSTEM_INSTRUCTION },
@@ -138,6 +135,16 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<GameRespon
     return callExternalLLM(messages, settings);
   }
 
+  // 2. Free Text Generation (No API Key)
+  if (!settings.apiKey) {
+      return await generateFreeText(
+          [], 
+          "Begin the episode. Set the scene and introduce the protagonist (the player) into a world where logic is twisted.", 
+          SYSTEM_INSTRUCTION
+      );
+  }
+
+  // 3. Gemini API (With Key)
   const ai = getAI(settings.apiKey);
   try {
     const modelToUse = getGeminiModelName(settings.modelName);
@@ -164,6 +171,7 @@ export const startNewEpisode = async (settings: LLMSettings): Promise<GameRespon
 };
 
 export const continueStory = async (history: StoryMessage[], userAction: string, settings: LLMSettings): Promise<GameResponse> => {
+  // 1. External Provider
   if (settings.provider === 'external') {
     const messages: any[] = [{ role: "system", content: SYSTEM_INSTRUCTION }];
     if (history.length > 0 && history[0].role === 'model') {
@@ -174,6 +182,12 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
     return callExternalLLM(messages, settings);
   }
 
+  // 2. Free Text Generation (No API Key)
+  if (!settings.apiKey) {
+      return await generateFreeText(history, userAction, SYSTEM_INSTRUCTION);
+  }
+
+  // 3. Gemini API (With Key)
   const ai = getAI(settings.apiKey);
   try {
     const modelToUse = getGeminiModelName(settings.modelName);
@@ -205,7 +219,6 @@ export const continueStory = async (history: StoryMessage[], userAction: string,
 
 export const generateSceneImage = async (sceneDescription: string, apiKey?: string): Promise<string | undefined> => {
   // 1. Try Google if API Key exists
-  // We keep this to support paid users who want fast generation.
   if (apiKey) {
     try {
         const ai = getAI(apiKey);

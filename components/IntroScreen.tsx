@@ -54,21 +54,12 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
   };
 
   const validateAndSave = () => {
-    if (settings.provider === 'gemini' && !settings.apiKey.trim()) {
-      setErrorMsg("API Key required for Gemini access.");
-      return;
-    }
-    // External/Local allows empty key
+    // Both modes now allow empty keys (Gemini falls back to free providers)
     setShowConfig(false);
     setErrorMsg(null);
   };
 
   const handleStartAttempt = () => {
-    if (settings.provider === 'gemini' && !settings.apiKey.trim()) {
-      setErrorMsg("Please configure a Gemini API Key to proceed.");
-      setShowConfig(true);
-      return;
-    }
     onStart();
   };
 
@@ -92,7 +83,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                   onClick={() => handleProviderSwitch('gemini')}
                   className={`flex-1 py-2 text-[10px] tracking-widest transition-all ${settings.provider === 'gemini' ? 'bg-white text-black font-bold' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  GOOGLE GEMINI
+                  GOOGLE GEMINI (Or Free)
                 </button>
                 <button 
                    onClick={() => handleProviderSwitch('external')}
@@ -146,16 +137,20 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
                       value={settings.apiKey}
                       onChange={(e) => handleChange('apiKey', e.target.value)}
                       className="bg-black border border-white/10 text-white p-3 text-sm focus:border-white/60 focus:outline-none rounded transition-colors font-mono tracking-wider"
-                      placeholder="Paste your API Key here..."
+                      placeholder="Leave empty for Free Mode..."
                     />
+                    <p className="text-[9px] text-gray-500 italic">
+                        {settings.apiKey ? "Valid Key Detected" : "No Key: Using slower community models (Pollinations/DeepAI)."}
+                    </p>
                   </div>
                   
                   <div className="flex flex-col space-y-1">
-                      <label className="text-[10px] uppercase text-gray-500">Gemini Model</label>
+                      <label className="text-[10px] uppercase text-gray-500">Gemini Model (If Key Provided)</label>
                       <select 
                         value={settings.modelName} 
                         onChange={(e) => handleChange('modelName', e.target.value)}
                         className="bg-black border border-white/10 text-white p-2 text-sm focus:border-white/40 focus:outline-none rounded transition-colors"
+                        disabled={!settings.apiKey}
                       >
                           <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
                           <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Fast)</option>
@@ -165,14 +160,14 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
 
                   <div className="bg-white/5 p-4 border border-white/10 rounded space-y-2">
                     <p className="text-[10px] text-gray-300 font-bold uppercase tracking-wider">
-                      How to play for free:
+                      Recommendation:
                     </p>
-                    <ol className="list-decimal list-inside text-[10px] text-gray-400 space-y-1 leading-relaxed">
-                      <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline">Google AI Studio</a>.</li>
-                      <li>Click <span className="text-white">"Create API Key"</span>.</li>
-                      <li>Select the "Free" tier (Gemini 2.5 Flash).</li>
-                      <li>Paste the key above.</li>
-                    </ol>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                        For the best experience (fast speed, coherent logic, consistent voice), use a 
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 underline mx-1">Free Gemini API Key</a>.
+                        <br/><br/>
+                        Without a key, the game uses public community models which may be slower and less "twisted".
+                    </p>
                   </div>
                 </div>
               </div>
@@ -202,7 +197,7 @@ const IntroScreen: React.FC<IntroScreenProps> = ({ onStart, settings, onSettings
             onClick={validateAndSave}
             className="mt-10 w-full bg-white text-black py-3 hover:bg-gray-200 transition-colors uppercase text-xs font-bold tracking-[0.3em] rounded"
           >
-            Save
+            Save & Close
           </button>
         </div>
       </div>
