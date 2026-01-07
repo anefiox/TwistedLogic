@@ -30,6 +30,7 @@ export interface LLMSettings {
 export interface GameResponse {
   text: string;
   ended: boolean;
+  isError?: boolean;
 }
 
 export const DEFAULT_SETTINGS: LLMSettings = {

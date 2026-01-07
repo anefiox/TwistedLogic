@@ -122,7 +122,7 @@ const handleGeminiError = (error: any): GameResponse => {
         errorMsg = "Model frequency not found. Check your model selection in Settings.";
     }
 
-    return { text: errorMsg, ended: true };
+    return { text: errorMsg, ended: true, isError: true };
 };
 
 export const startNewEpisode = async (settings: LLMSettings): Promise<GameResponse> => {

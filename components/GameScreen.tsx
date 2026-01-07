@@ -16,6 +16,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [autoNarrate, setAutoNarrate] = useState(true);
   const [isEnded, setIsEnded] = useState(false);
+  const [isErrorEnding, setIsErrorEnding] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -116,14 +117,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
       stopAudio();
       setIsLoading(true);
       
-      const { text, ended } = await startNewEpisode(settings);
+      const { text, ended, isError } = await startNewEpisode(settings);
       
       const newMessage: StoryMessage = { role: 'model', text: text };
       
       setHistory([newMessage]);
-      if (ended) setIsEnded(true);
+      
+      if (ended) {
+          setIsEnded(true);
+          if (isError) setIsErrorEnding(true);
+      }
 
-      handleGenerateAssets(text);
+      if (!isError) {
+          handleGenerateAssets(text);
+      }
 
       setIsLoading(false);
     };
@@ -152,13 +159,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
     const userMsg: StoryMessage = { role: 'user', text: action };
     setHistory(prev => [...prev, userMsg]);
 
-    const { text, ended } = await continueStory(history, action, settings);
+    const { text, ended, isError } = await continueStory(history, action, settings);
     
     const aiMsg: StoryMessage = { role: 'model', text: text };
     setHistory(prev => [...prev, aiMsg]);
 
     if (ended) {
       setIsEnded(true);
+      if (isError) setIsErrorEnding(true);
     } else {
       handleGenerateAssets(text);
     }
@@ -242,23 +250,25 @@ const GameScreen: React.FC<GameScreenProps> = ({ onRestart, settings }) => {
 
         {isEnded && (
           <div className="flex flex-col items-center justify-center py-12 px-6 border-y border-white/10 bg-white/5 space-y-6 animate-in fade-in zoom-in-95 duration-700">
-             <div className="text-center space-y-4 max-w-md">
-                <p className="text-gray-400 font-serif text-lg leading-relaxed italic">
-                  "Twisted Logic is free and always will be. 
-                  If you enjoyed this story, you can optionally support the project on Ko-fi."
-                </p>
-                <div id="kofi-button-container" className="flex justify-center mt-4">
-                  <a 
-                    href='https://ko-fi.com/L3L21RQ7SK' 
-                    target='_blank' 
-                    rel="noreferrer"
-                    className="flex items-center gap-2 bg-[#72a4f2] text-white font-bold py-2 px-6 rounded-full hover:brightness-110 transition-all shadow-lg text-sm"
-                  >
-                     <img src="https://storage.ko-fi.com/cdn/cup-border.png" alt="Ko-fi cup" className="h-4 w-auto animate-pulse" />
-                     <span>Support me on Ko-fi</span>
-                  </a>
-                </div>
-             </div>
+             {!isErrorEnding && (
+               <div className="text-center space-y-4 max-w-md">
+                  <p className="text-gray-400 font-serif text-lg leading-relaxed italic">
+                    "Twisted Logic is free and always will be. 
+                    If you enjoyed this story, you can optionally support the project on Ko-fi."
+                  </p>
+                  <div id="kofi-button-container" className="flex justify-center mt-4">
+                    <a 
+                      href='https://ko-fi.com/L3L21RQ7SK' 
+                      target='_blank' 
+                      rel="noreferrer"
+                      className="flex items-center gap-2 bg-[#72a4f2] text-white font-bold py-2 px-6 rounded-full hover:brightness-110 transition-all shadow-lg text-sm"
+                    >
+                       <img src="https://storage.ko-fi.com/cdn/cup-border.png" alt="Ko-fi cup" className="h-4 w-auto animate-pulse" />
+                       <span>Support me on Ko-fi</span>
+                    </a>
+                  </div>
+               </div>
+             )}
              
              <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full justify-center">
                  <button 
